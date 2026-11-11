@@ -101,8 +101,14 @@ window.HHHData = {
         full_name: String(input.full_name || "").trim(),
         company_name: String(input.company_name || "").trim() || null,
         phone: String(input.phone || "").trim() || null,
+        email: String(input.email || "").trim() || null,
         source: String(input.source || "").trim() || null,
-        stage: input.stage || "new"
+        customer_type: input.customer_type || 'Khác',
+        stage: input.stage || "new",
+        assigned_to: input.assigned_to || undefined,
+        province: input.province || null,
+        ward: input.ward || null,
+        notes: input.notes || null
       };
       if (!payload.full_name) throw new Error("Vui lòng nhập họ tên.");
     } else if (table === "opportunities") {
@@ -117,6 +123,23 @@ window.HHHData = {
     const {data,error}=await window.HHH_DB.client.from(table).insert(payload).select().single();
     if(error) throw error;
     return data;
+  },
+  async updateLead(id, changes) {
+    if (!this.ready()) throw new Error('Chưa cấu hình Supabase.');
+    const allowed=['full_name','company_name','phone','email','source','customer_type','stage','assigned_to','province','ward','notes','next_follow_up_at','estimated_value','lost_reason','last_contacted_at','converted_customer_id'];
+    const payload=Object.fromEntries(Object.entries(changes).filter(([k])=>allowed.includes(k)));
+    const {data,error}=await window.HHH_DB.client.from('leads').update(payload).eq('id',id).select().single();
+    if(error) throw error; return data;
+  },
+  async addLeadInteraction(input) {
+    if (!this.ready()) throw new Error('Chưa cấu hình Supabase.');
+    const {data,error}=await window.HHH_DB.client.from('lead_interactions').insert({lead_id:input.lead_id,interaction_type:input.interaction_type||'other',subject:String(input.subject||'').trim(),description:input.description||null,next_follow_up_at:input.next_follow_up_at||null}).select().single();
+    if(error) throw error; return data;
+  },
+  async listLeadInteractions(leadId) {
+    if (!this.ready()) throw new Error('Chưa cấu hình Supabase.');
+    const {data,error}=await window.HHH_DB.client.from('lead_interactions').select('id,interaction_type,subject,description,next_follow_up_at,created_at,created_by').eq('lead_id',leadId).order('created_at',{ascending:false});
+    if(error) throw error; return data||[];
   },
   async listCustomerContacts(customerId) {
     const {data,error}=await window.HHH_DB.client.from("customer_contacts").select("id,customer_id,full_name,position,phone,email,is_primary,notes,created_at").eq("customer_id",customerId).order("is_primary",{ascending:false}).order("created_at");
@@ -207,6 +230,41 @@ window.HHHData = {
   },
   async createCarePlan(input) {
     const {data,error}=await window.HHH_DB.client.from("customer_care_plans").insert({name:input.name,group_id:input.group_id,interval_days:input.interval_days,starts_on:input.starts_on}).select().single();
+    if(error)throw error;return data;
+  },
+  async listMarketTerritories() {
+    const {data,error}=await window.HHH_DB.client.from("market_territories").select("*,staff:profiles!market_territories_assigned_to_fkey(id,full_name,email)").order("province").order("ward");
+    if(error)throw error;return data||[];
+  },
+  async saveMarketTerritory(input) {
+    const payload={region:input.region,province:String(input.province||"").trim(),ward:input.ward||null,assigned_to:input.assigned_to,target_customers:Number(input.target_customers||0),notes:input.notes||null,is_active:true};
+    const c=window.HHH_DB.client;
+    let query=c.from("market_territories").select("id").eq("region",payload.region).eq("province",payload.province);
+    query=payload.ward?query.eq("ward",payload.ward):query.is("ward",null);
+    const found=await query.maybeSingle();if(found.error)throw found.error;
+    const result=found.data?await c.from("market_territories").update(payload).eq("id",found.data.id).select().single():await c.from("market_territories").insert(payload).select().single();
+    if(result.error)throw result.error;return result.data;
+  },
+  async listMarketPlans() {
+    const {data,error}=await window.HHH_DB.client.from("market_plans").select("*,staff:profiles!market_plans_assigned_to_fkey(id,full_name,email),territory:market_territories(id,region,province,ward)").order("plan_date",{ascending:false}).limit(200);
+    if(error)throw error;return data||[];
+  },
+  async createMarketPlan(input) {
+    const payload={title:String(input.title||"").trim(),territory_id:input.territory_id||null,assigned_to:input.assigned_to||null,plan_date:input.plan_date,objective:input.objective||null,status:"planned"};
+    const {data,error}=await window.HHH_DB.client.from("market_plans").insert(payload).select().single();
+    if(error)throw error;return data;
+  },
+  async updateMarketPlanStatus(id,status) {
+    const {data,error}=await window.HHH_DB.client.from("market_plans").update({status}).eq("id",id).select().single();
+    if(error)throw error;return data;
+  },
+  async listMarketVisits() {
+    const {data,error}=await window.HHH_DB.client.from("market_visits").select("*,staff:profiles!market_visits_assigned_to_fkey(id,full_name,email),customer:customers(id,full_name,company_name),territory:market_territories(id,region,province,ward)").order("visited_at",{ascending:false}).limit(500);
+    if(error)throw error;return data||[];
+  },
+  async createMarketVisit(input) {
+    const payload={customer_id:input.customer_id||null,territory_id:input.territory_id||null,visited_at:new Date(input.visited_at).toISOString(),visit_type:input.visit_type||"other",result:input.result||null,next_action:input.next_action||null,notes:input.notes||null};
+    const {data,error}=await window.HHH_DB.client.from("market_visits").insert(payload).select().single();
     if(error)throw error;return data;
   }
 

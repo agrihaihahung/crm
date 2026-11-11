@@ -34,7 +34,8 @@ window.HHHData = {
       potential_score: input.potential_score === "" || input.potential_score == null ? null : Number(input.potential_score),
       location_url: String(input.location_url || "").trim() || null,
       location_lat: input.location_lat ?? null,
-      location_lng: input.location_lng ?? null
+      location_lng: input.location_lng ?? null,
+      assigned_to: input.assigned_to || undefined
     };
     if (!payload.full_name || !payload.phone) throw new Error("Họ tên và số điện thoại là bắt buộc.");
     const {data,error} = await window.HHH_DB.client.from("customers").insert(payload).select().single();
@@ -43,7 +44,7 @@ window.HHHData = {
   },
   async updateCustomer(id, changes) {
     if (!this.ready()) throw new Error("Chưa cấu hình Supabase.");
-    const allowed = ["full_name","company_name","customer_type","phone","email","business_unit","status","source","address","province","group_id","assigned_to","notes","contact_person","tax_code","customer_description","business_scale","potential_level","potential_score","location_url","location_lat","location_lng"];
+    const allowed = ["full_name","company_name","customer_type","phone","email","business_unit","status","source","address","province","region","ward","group_id","assigned_to","notes","contact_person","tax_code","customer_description","business_scale","potential_level","potential_score","location_url","location_lat","location_lng"];
     const payload = Object.fromEntries(Object.entries(changes).filter(([k])=>allowed.includes(k)));
     const {data,error} = await window.HHH_DB.client.from("customers").update(payload).eq("id",id).select().single();
     if (error) throw error;
@@ -175,6 +176,22 @@ window.HHHData = {
   async listAllActivities() {
     const {data,error}=await window.HHH_DB.client.from("activities").select("id,customer_id,created_by,occurred_at,activity_type,subject").order("occurred_at",{ascending:false}).limit(5000);
     if(error)throw error;return data||[];
+  },
+  async listStaff() {
+    if (!this.ready()) throw new Error("Chưa cấu hình Supabase.");
+    const {data,error}=await window.HHH_DB.client.from("profiles")
+      .select("id,full_name,email,role,is_active,created_at")
+      .order("created_at",{ascending:true});
+    if(error) throw error;
+    return data||[];
+  },
+  async updateStaffAccess(input) {
+    if (!this.ready()) throw new Error("Chưa cấu hình Supabase.");
+    const {data,error}=await window.HHH_DB.client.rpc("hhh_admin_update_user_access",{
+      p_user_id:input.user_id, p_role:input.role, p_is_active:input.is_active
+    });
+    if(error) throw error;
+    return data;
   },
   async listProfiles() {
     const {data,error}=await window.HHH_DB.client.from("profiles").select("id,full_name,email,role,is_active").eq("is_active",true).order("full_name");

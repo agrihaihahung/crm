@@ -15,11 +15,14 @@ const tasks = [
 const navGroups = [
   {title:'TỔNG QUAN',items:[['Dashboard','▦'],['Khách hàng','♙'],['Khách tiềm năng','◎'],['Phân tích khách hàng','⌖']]},
   {title:'KINH DOANH',items:[['Cơ hội bán hàng','↗'],['Đơn hàng','▤']]},
-  {title:'CHĂM SÓC KHÁCH HÀNG',items:[['Trung tâm CSKH','♡'],['Lịch chăm sóc','▣'],['Công việc','✓']]}
+  {title:'CHĂM SÓC KHÁCH HÀNG',items:[['Trung tâm CSKH','♡'],['Lịch chăm sóc','▣'],['Công việc','✓']]},
+  {title:'QUẢN TRỊ',items:[['Phân công & KPI','▥'],['Nhân viên & phân quyền','♙']]}
 ];
 let customers = window.HHH_DB?.client ? [] : loadCustomers();
 let liveMode = false, loading = false, currentCustomer = null;
 let active = 'Dashboard', query = '', filter = 'Tất cả', doneTasks = new Set(), toastTimer;
+let currentProfile = null, staffRows = [], staffError = '';
+let kpiData={profiles:[],customers:[],activities:[],tasks:[]}, kpiError=''; 
 let selectedCustomerId = null, customerActivities = [], customerActivitiesLoading = false;
 let customerContacts = [], customerDocuments = [], customerTags = [], customerCareGroups = [], customerExtrasLoading = false;
 const todayLabel = new Intl.DateTimeFormat('vi-VN',{weekday:'long',day:'2-digit',month:'long',year:'numeric'}).format(new Date());
@@ -33,7 +36,7 @@ function esc(s=''){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt
 function statusClass(s){return s==='Đang hoạt động'?'success':s==='Cần chăm sóc'?'warning':s==='Tiềm năng'?'info':'muted';}
 function iconButton(symbol,label,cls=''){return `<button class="icon-btn ${cls}" aria-label="${label}" title="${label}">${symbol}</button>`;}
 function money(value){return new Intl.NumberFormat('vi-VN',{style:'currency',currency:'VND',maximumFractionDigits:0}).format(Number(value||0));}
-function mapCustomer(row){return {id:row.id,legacyId:row.legacy_id,code:row.customer_code,name:row.full_name||'',company:row.company_name||'',type:row.customer_type||'Khác',phone:row.phone||'',email:row.email||'',address:row.address||'',province:row.province||'',source:row.source||'',notes:row.notes||'',description:row.customer_description||'',locationUrl:row.location_url||'',locationLat:row.location_lat,locationLng:row.location_lng,contact:row.contact_person||'',taxCode:row.tax_code||'',createdAt:row.created_at,owner:row.assigned_to?String(row.assigned_to).slice(0,8):'Chưa phân công',status:row.status||'Tiềm năng',businessUnit:row.business_unit||'both',businessScale:row.business_scale||'Chưa phân loại',potentialLevel:row.potential_level||'Chưa đánh giá',potentialScore:row.potential_score??null,color:'blue'};}
+function mapCustomer(row){return {id:row.id,legacyId:row.legacy_id,code:row.customer_code,name:row.full_name||'',company:row.company_name||'',type:row.customer_type||'Khác',phone:row.phone||'',email:row.email||'',address:row.address||'',province:row.province||'',region:row.region||'',ward:row.ward||'',source:row.source||'',notes:row.notes||'',description:row.customer_description||'',locationUrl:row.location_url||'',locationLat:row.location_lat,locationLng:row.location_lng,contact:row.contact_person||'',taxCode:row.tax_code||'',createdAt:row.created_at,assignedTo:row.assigned_to||null,owner:row.assigned_to?String(row.assigned_to).slice(0,8):'Chưa phân công',status:row.status||'Tiềm năng',businessUnit:row.business_unit||'both',businessScale:row.business_scale||'Chưa phân loại',potentialLevel:row.potential_level||'Chưa đánh giá',potentialScore:row.potential_score??null,color:'blue'};}
 async function loadLiveCustomers(){
  if(!window.HHHData?.ready()) return;
  liveMode=true; loading=true; render();
@@ -51,28 +54,34 @@ const pageMeta = {
  'Đơn hàng':['Quản lý đơn hàng','Theo dõi đơn hàng, giá trị, thanh toán và trạng thái xử lý.'],
  'Trung tâm CSKH':['Trung tâm chăm sóc khách hàng','Tiếp nhận, phân loại và theo dõi yêu cầu hỗ trợ, khiếu nại.'],
  'Lịch chăm sóc':['Lịch chăm sóc khách hàng','Theo dõi lịch hẹn, cuộc gọi và hoạt động chăm sóc theo thời gian.'],
- 'Công việc':['Quản lý công việc','Phân công và theo dõi tiến độ công việc của đội ngũ.']
+ 'Công việc':['Quản lý công việc','Phân công và theo dõi tiến độ công việc của đội ngũ.'],
+ 'Nhân viên & phân quyền':['Quản lý nhân viên','Quản lý vai trò truy cập và trạng thái tài khoản CRM.'],
+ 'Phân công & KPI':['Hiệu suất đội ngũ','Phân công khách hàng, theo dõi hoạt động và tiến độ công việc theo nhân viên.']
 };
 let moduleRows = {};
 let moduleError = {};
 let moduleLoading = {};
 function render(){
  const meta=pageMeta[active]||pageMeta.Dashboard;
- const nav=navGroups.map(g=>`<section><div class="nav-heading">${g.title}</div>${g.items.map(([label,ico])=>`<button class="nav-item ${active===label?'active':''}" data-nav="${label}"><span class="nav-symbol">${ico}</span><span>${label}</span></button>`).join('')}</section>`).join('');
+ const visibleNavGroups=navGroups.map(g=>({...g,items:g.items.filter(([label])=>label!=='Nhân viên & phân quyền'||currentProfile?.role==='admin')})).filter(g=>g.items.length);
+ const nav=visibleNavGroups.map(g=>`<section><div class="nav-heading">${g.title}</div>${g.items.map(([label,ico])=>`<button class="nav-item ${active===label?'active':''}" data-nav="${label}"><span class="nav-symbol">${ico}</span><span>${label}</span></button>`).join('')}</section>`).join('');
  app.innerHTML=`<div class="app-shell">
- <aside class="sidebar" id="sidebar"><div class="brand"><div class="brand-mark">HHH</div><div><b>HHH CRM</b><small>Customer relationship</small></div><button class="icon-btn close-nav" data-action="close-nav">✕</button></div>
+ <aside class="sidebar" id="sidebar"><div class="brand"><img class="brand-logo-image" src="assets/images/logo-hai-ha-hung.png" alt="Hải Hà Hưng – Kiến tạo, Nâng tầm, Thịnh vượng"><button class="icon-btn close-nav" data-action="close-nav" aria-label="Đóng menu">✕</button></div>
  <div class="workspace"><div class="workspace-logo">H</div><div><b>Hải Hà Hưng</b><small>Không gian làm việc</small></div><span>⌄</span></div>
  <nav class="nav-list">${nav}</nav>
- <div class="sidebar-bottom"><div class="help-card"><div class="help-icon">✧</div><b>Cần hỗ trợ?</b><p>Trung tâm quản lý quan hệ khách hàng Hải Hà Hưng.</p><button data-action="help">Xem hướng dẫn ↗</button></div><button class="nav-item" data-action="settings">⚙ Cài đặt hệ thống</button><div class="profile"><div class="avatar avatar-dark">HH</div><div class="profile-info"><b>Quản trị viên</b><small>Administrator</small></div></div></div></aside>
- <main class="main-area"><header class="topbar"><div class="top-left"><button class="icon-btn menu-btn" data-action="open-nav">☰</button><div class="breadcrumb">Không gian làm việc <span>›</span> <b>${esc(active)}</b></div></div><div class="top-actions"><label class="global-search"><span>⌕</span><input id="globalSearch" placeholder="Tìm kiếm nhanh..." value="${esc(query)}"></label><button class="icon-btn notification" data-action="notifications">♧</button><div class="top-avatar">HH</div></div></header>
+ <div class="sidebar-bottom"><div class="sidebar-account-box"><button class="nav-item sidebar-settings" data-action="settings">⚙ <span>Cài đặt hệ thống</span></button><div class="profile"><div class="avatar avatar-dark">${esc(initials(currentProfile?.full_name||'HH'))}</div><div class="profile-info"><b>${esc(currentProfile?.full_name||currentProfile?.email||'Tài khoản')}</b><small>${esc(currentProfile?.role||'')}</small></div><button class="btn btn-light btn-logout" data-action="logout" title="Đăng xuất">↪ Đăng xuất</button></div></div></div></aside>
+ <main class="main-area"><header class="topbar"><div class="top-left"><button class="icon-btn menu-btn" data-action="open-nav">☰</button><div class="breadcrumb">Không gian làm việc <span>›</span> <b>${esc(active)}</b></div></div><div class="top-actions"><label class="global-search"><span>⌕</span><input id="globalSearch" placeholder="Tìm kiếm nhanh..." value="${esc(query)}"></label><button class="icon-btn notification" data-action="notifications">♧</button><div class="top-avatar">${esc(initials(currentProfile?.full_name||'HH'))}</div><button class="btn btn-light btn-logout-top" data-action="logout">↪ Đăng xuất</button></div></header>
  <div class="page-content"><div class="welcome-row"><div><div class="eyebrow"><span class="live-dot"></span> ${esc(todayLabel.toLocaleUpperCase('vi-VN'))} · ${liveMode?'SUPABASE LIVE':'CHƯA KẾT NỐI DỮ LIỆU'}</div><h1>${active==='Dashboard'?'Tổng quan CRM':esc(active)}</h1><p>${esc(meta[1])}</p></div><div class="welcome-actions">${active==='Khách hàng'?(selectedCustomerId?'':'<button class="btn btn-light" data-action="export">⇩ Xuất CSV</button><button class="btn btn-primary" data-action="add">＋ Thêm khách hàng</button>'):active==='Dashboard'?'':'<button class="btn btn-primary" data-action="module-add">＋ '+(active==='Khách tiềm năng'?'Thêm khách tiềm năng':active==='Cơ hội bán hàng'?'Thêm cơ hội':active==='Đơn hàng'?'Tạo đơn hàng':active==='Trung tâm CSKH'?'Tạo yêu cầu':'Tạo công việc')+'</button>'}</div></div>
  <section id="module-content">${renderPageContent()}</section>
  <footer class="footer"><span>© 2026 HHH CRM · Hải Hà Hưng</span><span>HHH CRM · Vanilla JS + Supabase</span></footer></div></main>${mobileScrim()}</div>`;
  bindEvents();
+ if(active==='Phân tích khách hàng') requestAnimationFrame(()=>initCustomerMap());
 }
 function renderPageContent(){
  if(active==='Dashboard') return renderDashboard();
  if(active==='Phân tích khách hàng') return renderCustomerIntelligence();
+ if(active==='Nhân viên & phân quyền') return currentProfile?.role==='admin'?renderStaffPage():'<div class="panel">Bạn không có quyền truy cập trang này.</div>';
+ if(active==='Phân công & KPI') return renderKpiPage();
  if(active==='Khách hàng') return selectedCustomerId ? renderCustomerProfile() : renderCustomersPage();
  if(active==='Khách tiềm năng') return renderLeadsPage();
  if(active==='Cơ hội bán hàng') return renderRowsPage('opportunities');
@@ -192,24 +201,64 @@ async function loadCustomerIntelligence(){
 }
 function initCustomerMap(){
  const el=document.getElementById('customerLeafletMap');
- if(!el||!window.L)return;
- const points=customers.filter(c=>Number.isFinite(Number(c.locationLat))&&Number.isFinite(Number(c.locationLng)));
- if(!points.length)return;
- const map=window.L.map(el).setView([Number(points[0].locationLat),Number(points[0].locationLng)],9);
- window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap'}).addTo(map);
- const bounds=[];
- points.forEach(c=>{
-  const lat=Number(c.locationLat),lng=Number(c.locationLng);bounds.push([lat,lng]);
-  window.L.marker([lat,lng]).addTo(map).bindPopup(`<b>${esc(c.name)}</b><br>${esc(c.company||c.address||'')}<br><a target="_blank" rel="noopener" href="${esc(c.locationUrl||`https://www.google.com/maps?q=${lat},${lng}`)}">Mở Google Maps</a>`);
- });
- if(bounds.length>1)map.fitBounds(bounds,{padding:[24,24]});
+ if(!el)return;
+ if(!window.L){
+  el.innerHTML='<div class="map-load-error"><b>Chưa tải được thư viện bản đồ</b><span>Kiểm tra kết nối Internet hoặc quyền truy cập CDN, sau đó tải lại trang.</span></div>';
+  return;
+ }
+ const points=customers.filter(c=>Number.isFinite(Number(c.locationLat))&&Number.isFinite(Number(c.locationLng))
+  &&(mapRegionFilter==='all'||(c.region||'Chưa phân vùng')===mapRegionFilter)
+  &&(mapProvinceFilter==='all'||(c.province||'Chưa có tỉnh/thành')===mapProvinceFilter)
+  &&(mapWardFilter==='all'||(c.ward||'Chưa có xã/phường')===mapWardFilter));
+ if(window.customerLeaflet){window.customerLeaflet.remove();window.customerLeaflet=null;}
+ try{
+  const map=window.L.map(el,{scrollWheelZoom:true}).setView([16.05,108.2],6);window.customerLeaflet=map;
+  const tileSources=[
+   'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+   'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
+  ];
+  let tileFallbackUsed=false;
+  const primary=window.L.tileLayer(tileSources[0],{attribution:'&copy; OpenStreetMap',maxZoom:19});
+  primary.on('tileerror',()=>{
+   if(tileFallbackUsed)return;tileFallbackUsed=true;
+   window.L.tileLayer(tileSources[1],{attribution:'&copy; OpenStreetMap &copy; CARTO',maxZoom:19}).addTo(map);
+  });
+  primary.addTo(map);
+  const bounds=[];
+  points.forEach(c=>{const lat=Number(c.locationLat),lng=Number(c.locationLng);if(!Number.isFinite(lat)||!Number.isFinite(lng)||Math.abs(lat)>90||Math.abs(lng)>180)return;bounds.push([lat,lng]);
+   window.L.marker([lat,lng]).addTo(map).bindPopup(`<b>${esc(c.name)}</b><br>${esc(c.company||c.address||'')}<br>${esc([c.ward,c.province].filter(Boolean).join(', '))}<br><a target="_blank" rel="noopener" href="${esc(c.locationUrl||`https://www.google.com/maps?q=${lat},${lng}`)}">Mở Google Maps</a>`);
+  });
+  if(bounds.length===1)map.setView(bounds[0],13);else if(bounds.length>1)map.fitBounds(bounds,{padding:[24,24],maxZoom:14});
+  requestAnimationFrame(()=>map.invalidateSize(true));
+  setTimeout(()=>map.invalidateSize(true),250);
+ }catch(error){
+  console.error('HHH CRM map initialization failed:',error);
+  el.innerHTML='<div class="map-load-error"><b>Không thể khởi tạo bản đồ</b><span>'+esc(error.message||'Lỗi không xác định')+'</span></div>';
+ }
 }
+function mapFilterChanged(level,value){
+ if(level==='region'){mapRegionFilter=value;mapProvinceFilter='all';mapWardFilter='all';}
+ if(level==='province'){mapProvinceFilter=value;mapWardFilter='all';}
+ if(level==='ward')mapWardFilter=value;
+ render();
+}
+window.mapFilterChanged=mapFilterChanged;
 function renderCustomerIntelligence(){
  const now=Date.now(),lastByCustomer=new Map();
  intelligenceData.activities.forEach(a=>{const t=new Date(a.occurred_at).getTime();if(!lastByCustomer.has(a.customer_id)||lastByCustomer.get(a.customer_id)<t)lastByCustomer.set(a.customer_id,t);});
  const stale=customers.map(c=>({...c,lastCare:lastByCustomer.get(c.id)||0,days:lastByCustomer.has(c.id)?Math.floor((now-lastByCustomer.get(c.id))/86400000):9999})).filter(c=>c.days>=30).sort((a,b)=>b.days-a.days);
  const high=customers.filter(c=>Number(c.potentialScore||0)>=70||['Cao','Chiến lược'].includes(c.potentialLevel)).sort((a,b)=>Number(b.potentialScore||0)-Number(a.potentialScore||0));
  const mapped=customers.filter(c=>c.locationLat&&c.locationLng);
+ const regionOf=c=>c.region||'Chưa phân vùng', provinceOf=c=>c.province||'Chưa có tỉnh/thành', wardOf=c=>c.ward||'Chưa có xã/phường';
+ const regions=[...new Set(customers.map(regionOf))].sort((a,b)=>a.localeCompare(b,'vi'));
+ const regionRows=customers.filter(c=>mapRegionFilter==='all'||regionOf(c)===mapRegionFilter);
+ const provinces=[...new Set(regionRows.map(provinceOf))].sort((a,b)=>a.localeCompare(b,'vi'));
+ const provinceRows=regionRows.filter(c=>mapProvinceFilter==='all'||provinceOf(c)===mapProvinceFilter);
+ const wards=[...new Set(provinceRows.map(wardOf))].sort((a,b)=>a.localeCompare(b,'vi'));
+ const selectedRows=provinceRows.filter(c=>mapWardFilter==='all'||wardOf(c)===mapWardFilter);
+ const selectedMapped=mapped.filter(c=>(mapRegionFilter==='all'||regionOf(c)===mapRegionFilter)&&(mapProvinceFilter==='all'||provinceOf(c)===mapProvinceFilter)&&(mapWardFilter==='all'||wardOf(c)===mapWardFilter));
+ const countBy=(rows,keyFn)=>{const m=new Map();rows.forEach(c=>{const k=keyFn(c);m.set(k,(m.get(k)||0)+1)});return [...m.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],'vi'));};
+ const areaCounts=countBy(mapped,regionOf),provinceCounts=countBy(regionRows,provinceOf),wardCounts=countBy(provinceRows,wardOf);
  const pins=mapped.map(c=>`<a target="_blank" rel="noopener" href="${esc(c.locationUrl||`https://www.google.com/maps?q=${c.locationLat},${c.locationLng}`)}"><b>${esc(c.name)}</b><small>${esc(c.company||c.address||'')}</small></a>`).join('');
  const staffStats=intelligenceData.profiles.map(p=>{
   const acts=intelligenceData.activities.filter(a=>a.created_by===p.id).length;
@@ -226,8 +275,15 @@ function renderCustomerIntelligence(){
  </div>
  ${intelligenceError?`<div class="panel"><b>Chưa tải được dữ liệu phân tích</b><p>${esc(intelligenceError)}</p></div>`:''}
  <div class="dashboard-grid">
-  <section class="panel"><div class="panel-head"><div><h2>Bản đồ khách hàng nhôm kính</h2><p>${mapped.length} khách hàng đã có tọa độ. Chọn khách để mở Google Maps.</p></div></div>
-   <div class="crm-map-grid"><div class="crm-map-frame">${mapped.length?`<div id="customerLeafletMap" aria-label="Bản đồ vị trí khách hàng"></div>`:`<div class="empty-state">Chưa có khách hàng được định vị. Thêm link Google Maps trong hồ sơ khách hàng.</div>`}</div><div class="crm-map-list">${pins||'<p class="empty-state">Chưa có dữ liệu tọa độ.</p>'}</div></div>
+  <section class="panel"><div class="panel-head"><div><h2>Bản đồ khách hàng nhôm kính</h2><p>${selectedRows.length}/${customers.length} khách hàng trong khu vực đang chọn · ${selectedMapped.length} đã có tọa độ bản đồ.</p></div></div>
+   <div class="map-area-filters">
+    <label>Khu vực<select id="mapRegionSelect" onchange="mapFilterChanged('region',this.value)"><option value="all">Tất cả khu vực (${mapped.length})</option>${regions.map(x=>`<option value="${esc(x)}" ${mapRegionFilter===x?'selected':''}>${esc(x)} (${areaCounts.find(y=>y[0]===x)?.[1]||0})</option>`).join('')}</select></label>
+    <label>Tỉnh / Thành phố<select id="mapProvinceSelect" onchange="mapFilterChanged('province',this.value)" ${mapRegionFilter==='all'?'':' ' }><option value="all">Tất cả tỉnh/thành (${regionRows.length})</option>${provinces.map(x=>`<option value="${esc(x)}" ${mapProvinceFilter===x?'selected':''}>${esc(x)} (${provinceCounts.find(y=>y[0]===x)?.[1]||0})</option>`).join('')}</select></label>
+    <label>Xã / Phường<select id="mapWardSelect" onchange="mapFilterChanged('ward',this.value)"><option value="all">Tất cả xã/phường (${provinceRows.length})</option>${wards.map(x=>`<option value="${esc(x)}" ${mapWardFilter===x?'selected':''}>${esc(x)} (${wardCounts.find(y=>y[0]===x)?.[1]||0})</option>`).join('')}</select></label>
+   </div>
+   <div class="map-area-summary"><b>${selectedRows.length} khách hàng</b><span>·</span><span>${mapRegionFilter==='all'?'Toàn quốc':esc(mapRegionFilter)}</span><span>${mapProvinceFilter==='all'?'':`· ${esc(mapProvinceFilter)}`}</span><span>${mapWardFilter==='all'?'':`· ${esc(mapWardFilter)}`}</span><button class="btn btn-light btn-sm" onclick="mapFilterChanged('region','all')">Xóa lọc</button></div>
+   <div class="crm-map-grid"><div class="crm-map-frame">${mapped.length?`<div id="customerLeafletMap" aria-label="Bản đồ vị trí khách hàng"></div>`:`<div class="empty-state">Chưa có khách hàng được định vị. Thêm link Google Maps trong hồ sơ khách hàng.</div>`}</div><div class="crm-map-list">${selectedRows.length?selectedRows.map(c=>`<a ${c.locationUrl||c.locationLat?'target="_blank" rel="noopener"':''} href="${esc(c.locationUrl||(c.locationLat?`https://www.google.com/maps?q=${c.locationLat},${c.locationLng}`:'#'))}"><b>${esc(c.name)}</b><small>${esc([c.ward,c.province].filter(Boolean).join(', ')||c.address||'Chưa khai báo xã/phường')}${c.locationLat?' · Có định vị':' · Chưa định vị'}</small></a>`).join(''):'<p class="empty-state">Không có khách hàng ở khu vực này.</p>'}</div></div>
+   <div class="map-count-grid"><div><b>Theo khu vực</b>${areaCounts.map(([n,c])=>`<button onclick="mapFilterChanged('region',${JSON.stringify(n)})"><span>${esc(n)}</span><strong>${c}</strong></button>`).join('')||'<small>Chưa có dữ liệu</small>'}</div><div><b>Theo tỉnh / thành</b>${provinceCounts.map(([n,c])=>`<button onclick="mapFilterChanged('province',${JSON.stringify(n)})"><span>${esc(n)}</span><strong>${c}</strong></button>`).join('')||'<small>Chọn khu vực để xem</small>'}</div><div><b>Theo xã / phường</b>${wardCounts.map(([n,c])=>`<button onclick="mapFilterChanged('ward',${JSON.stringify(n)})"><span>${esc(n)}</span><strong>${c}</strong></button>`).join('')||'<small>Chọn tỉnh/thành để xem</small>'}</div></div>
   </section>
   <section class="panel"><div class="panel-head"><div><h2>Khách hàng tiềm năng cao</h2><p>Ưu tiên chăm sóc và phát triển quan hệ.</p></div></div>
    ${high.length?`<div class="intel-list">${high.slice(0,8).map(c=>`<div><b>${esc(c.name)}</b><small>${esc(c.company||c.phone)}</small><span>${Number(c.potentialScore||0)} điểm · ${esc(c.potentialLevel||'')}</span></div>`).join('')}</div>`:'<div class="empty-state">Chưa có khách hàng được đánh giá tiềm năng cao. Cập nhật điểm trong hồ sơ khách hàng.</div>'}
@@ -247,8 +303,70 @@ function renderCustomerIntelligence(){
  </section>`;
 }
 
+let kpiPeriod='month', kpiStaff='all';
+let mapRegionFilter='all', mapProvinceFilter='all', mapWardFilter='all';
+async function logoutUser(){
+ if(!window.HHH_DB?.client){location.href='login.html';return;}
+ if(!confirm('Bạn chắc chắn muốn đăng xuất khỏi HHH CRM?'))return;
+ try{const {error}=await window.HHH_DB.client.auth.signOut();if(error)throw error;location.replace('login.html');}
+ catch(e){notify('Đăng xuất chưa thành công: '+(e.message||e));}
+}
+async function loadKpi(){
+ kpiError='';
+ try{const [profiles,rows,activities,tasks]=await Promise.all([
+  window.HHHData.listProfiles(),window.HHHData.listCustomers({limit:2000}),window.HHHData.listAllActivities(),window.HHHData.listCareTasks()
+ ]);kpiData={profiles,customers:rows,activities,tasks};
+ }catch(e){kpiError=e.message||String(e);}
+ render();
+}
+function renderKpiPage(){
+ const now=new Date();let start=new Date(now);
+ if(kpiPeriod==='week'){start.setDate(now.getDate()-6);start.setHours(0,0,0,0);}
+ else if(kpiPeriod==='month'){start=new Date(now.getFullYear(),now.getMonth(),1);}
+ else {start=new Date(now.getFullYear(),0,1);}
+ const inPeriod=d=>d&&new Date(d)>=start&&new Date(d)<=now;
+ const staff=kpiData.profiles.filter(p=>kpiStaff==='all'||p.id===kpiStaff);
+ const rows=staff.map(p=>{
+  const cs=kpiData.customers.filter(c=>c.assigned_to===p.id);
+  const acts=kpiData.activities.filter(a=>a.created_by===p.id&&inPeriod(a.occurred_at));
+  const tasks=kpiData.tasks.filter(x=>x.assigned_to===p.id&&inPeriod(x.created_at));
+  const done=tasks.filter(x=>x.status==='completed').length;
+  const calls=acts.filter(a=>a.activity_type==='call').length;
+  const meetings=acts.filter(a=>a.activity_type==='meeting'||a.activity_type==='visit').length;
+  return {p,customers:cs.length,acts:acts.length,calls,meetings,tasks:tasks.length,done,rate:tasks.length?Math.round(done/tasks.length*100):0};
+ });
+ const sum=k=>rows.reduce((a,r)=>a+r[k],0);
+ return `<div class="table-tools"><label>Thời gian <select id="kpiPeriod"><option value="week" ${kpiPeriod==='week'?'selected':''}>7 ngày gần đây</option><option value="month" ${kpiPeriod==='month'?'selected':''}>Tháng này</option><option value="year" ${kpiPeriod==='year'?'selected':''}>Năm nay</option></select></label><label>Nhân viên <select id="kpiStaff"><option value="all">Tất cả nhân viên</option>${kpiData.profiles.map(p=>`<option value="${esc(p.id)}" ${kpiStaff===p.id?'selected':''}>${esc(p.full_name||p.email||'Nhân viên')}</option>`).join('')}</select></label><button class="btn btn-light" data-kpi-reload>↻ Làm mới</button></div>
+ ${kpiError?`<section class="panel"><b>Không tải được báo cáo</b><p>${esc(kpiError)}</p><p class="field-hint">Kiểm tra quyền SELECT của tài khoản và migration Phase 2.9.</p></section>`:`<div class="stats-grid">${stat('Khách đang phụ trách',sum('customers'),'','Theo phân công hiện tại','♙','blue')}${stat('Tương tác',sum('acts'),'','Trong kỳ đã chọn','◎','green')}${stat('Công việc hoàn thành',sum('done'),'','Trong kỳ đã chọn','✓','purple')}${stat('Tỷ lệ hoàn thành',`${sum('tasks')?Math.round(sum('done')/sum('tasks')*100):0}%`,'','Công việc hoàn tất / tổng công việc','◷','orange')}</div>
+ <section class="panel"><div class="panel-head"><div><h2>Hiệu suất theo nhân viên</h2><p>KPI được tổng hợp từ khách hàng, activities và care_tasks trong Supabase.</p></div></div><div class="table-scroll"><table><thead><tr><th>NHÂN VIÊN</th><th>KHÁCH PHỤ TRÁCH</th><th>TƯƠNG TÁC</th><th>CUỘC GỌI</th><th>GẶP KHÁCH</th><th>CÔNG VIỆC</th><th>HOÀN THÀNH</th><th>TỶ LỆ</th></tr></thead><tbody>${rows.map(r=>`<tr><td><b>${esc(r.p.full_name||r.p.email||'Nhân viên')}</b><small>${esc(r.p.email||'')}</small></td><td>${r.customers}</td><td>${r.acts}</td><td>${r.calls}</td><td>${r.meetings}</td><td>${r.tasks}</td><td>${r.done}</td><td><b>${r.rate}%</b></td></tr>`).join('')||'<tr><td colspan="8">Chưa có dữ liệu nhân viên.</td></tr>'}</tbody></table></div></section>`}`;
+}
+
+async function loadStaff(){
+ try{staffError='';staffRows=await window.HHHData.listStaff();render();}
+ catch(e){staffError=e.message||String(e);render();}
+}
+function renderStaffPage(){
+ const rows=staffRows.map(u=>`<tr><td><b>${esc(u.full_name||'Chưa đặt tên')}</b><small>${esc(u.email||'')}</small></td><td><span class="status info">${esc(u.id.slice(0,8))}</span></td><td><select data-staff-role data-staff-id="${esc(u.id)}" ${u.id===currentProfile?.id?'disabled':''}><option value="admin" ${u.role==='admin'?'selected':''}>Admin</option><option value="editor" ${u.role==='editor'?'selected':''}>Editor</option><option value="viewer" ${u.role==='viewer'?'selected':''}>Viewer</option></select></td><td><label class="staff-toggle"><input type="checkbox" data-staff-active data-staff-id="${esc(u.id)}" ${u.is_active?'checked':''} ${u.id===currentProfile?.id?'disabled':''}><span>${u.is_active?'Đang hoạt động':'Đã khóa'}</span></label></td><td>${u.created_at?new Date(u.created_at).toLocaleDateString('vi-VN'):'—'}</td></tr>`).join('');
+ return `<section class="panel"><div class="panel-head"><div><h2>Danh sách nhân viên</h2><p>Thay đổi vai trò và trạng thái truy cập CRM. Quyền thực tế được kiểm soát bằng RLS trong Supabase.</p></div><button class="btn btn-light" data-staff-reload>↻ Làm mới</button></div>${staffError?`<div class="empty-state">Không tải được nhân viên: ${esc(staffError)}<br>Kiểm tra migration Phase 2.8 và quyền admin.</div>`:`<div class="table-scroll"><table><thead><tr><th>NHÂN VIÊN</th><th>MÃ TÀI KHOẢN</th><th>VAI TRÒ</th><th>TRẠNG THÁI</th><th>NGÀY TẠO</th></tr></thead><tbody>${rows||'<tr><td colspan="5">Chưa có tài khoản nhân viên.</td></tr>'}</tbody></table></div>`}</section>
+ <section class="panel staff-role-guide"><div class="panel-head"><div><h2>Giải thích vai trò</h2><p>Phân quyền áp dụng trên dữ liệu CRM.</p></div></div><div class="staff-role-grid"><article><b>Admin</b><p>Quản trị tài khoản, xem và quản lý toàn bộ dữ liệu, được phép xóa theo policy.</p></article><article><b>Editor</b><p>Xem, thêm và chỉnh sửa dữ liệu. Không được xóa dữ liệu.</p></article><article><b>Viewer</b><p>Chỉ xem dữ liệu, không được thêm, sửa hoặc xóa.</p></article></div><p class="field-hint">Tạo tài khoản mới tại Supabase → Authentication → Users → Add user. Sau đó tải lại danh sách để gán vai trò.</p></section>`;
+}
+async function saveStaffAccess(id,role,isActive){
+ try{await window.HHHData.updateStaffAccess({user_id:id,role,is_active:isActive});notify('Đã cập nhật quyền nhân viên.');await loadStaff();}
+ catch(e){notify('Không thể cập nhật quyền: '+(e.message||e));await loadStaff();}
+}
+async function loadCurrentProfile(){
+ try{const {data:{user}}=await window.HHH_DB.client.auth.getUser();if(!user)return;const {data,error}=await window.HHH_DB.client.from('profiles').select('id,full_name,email,role,is_active').eq('id',user.id).single();if(error)throw error;currentProfile=data;if(!data.is_active){await window.HHH_DB.client.auth.signOut();location.href='login.html';return;}render();}
+ catch(e){console.warn('Không tải được hồ sơ quyền:',e.message);}
+}
+
 function bindEvents(){
- document.querySelectorAll('[data-nav]').forEach(el=>el.addEventListener('click',async()=>{active=el.dataset.nav;selectedCustomerId=null;customerActivities=[];query='';filter='Tất cả';document.getElementById('sidebar')?.classList.remove('sidebar-open');render();await loadModuleForActive();}));
+ document.querySelectorAll('[data-nav]').forEach(el=>el.addEventListener('click',async()=>{active=el.dataset.nav;selectedCustomerId=null;customerActivities=[];query='';filter='Tất cả';document.getElementById('sidebar')?.classList.remove('sidebar-open');render();if(active==='Nhân viên & phân quyền')await loadStaff();else await loadModuleForActive();}));
+ document.querySelectorAll('[data-staff-role]').forEach(el=>el.addEventListener('change',()=>saveStaffAccess(el.dataset.staffId,el.value,null)));
+ document.querySelectorAll('[data-staff-active]').forEach(el=>el.addEventListener('change',()=>saveStaffAccess(el.dataset.staffId,null,el.checked)));
+ document.querySelector('[data-staff-reload]')?.addEventListener('click',loadStaff);
+ document.querySelector('[data-kpi-reload]')?.addEventListener('click',loadKpi);
+ document.getElementById('kpiPeriod')?.addEventListener('change',e=>{kpiPeriod=e.target.value;render();});
+ document.getElementById('kpiStaff')?.addEventListener('change',e=>{kpiStaff=e.target.value;render();});
  document.querySelectorAll('[data-action]').forEach(el=>el.addEventListener('click',()=>action(el.dataset.action)));
  document.querySelectorAll('[data-customer]').forEach(el=>el.addEventListener('click',()=>{const c=customers.find(x=>String(x.id||x.phone)===el.dataset.customer);if(c)showCustomer(c);}));
  document.querySelector('[data-back-customers]')?.addEventListener('click',()=>{selectedCustomerId=null;customerActivities=[];render();});
@@ -274,6 +392,7 @@ function bindEvents(){
  document.getElementById('scrim')?.addEventListener('click',()=>document.getElementById('sidebar')?.classList.remove('sidebar-open'));
 }
 async function loadModuleForActive(){
+ if(active==='Phân công & KPI'){await loadKpi();return;}
  const map={'Khách tiềm năng':'leads','Cơ hội bán hàng':'opportunities','Đơn hàng':'orders','Trung tâm CSKH':'complaints','Lịch chăm sóc':'care_tasks','Công việc':'care_tasks'};
  const key=map[active];if(key)await loadModule(key); else if(active==='Phân tích khách hàng') await loadCustomerIntelligence();
 }
@@ -287,8 +406,9 @@ async function loadModule(key){
  finally{moduleLoading[key]=false;render();}
 }
 function refreshTable(){const q=query.toLowerCase();const rows=[...document.querySelectorAll('tbody tr')];rows.forEach(row=>{const text=row.textContent.toLowerCase();row.hidden=!(text.includes(q))|| (filter!=='Tất cả'&&!row.querySelector('.status')?.textContent.includes(filter));});const count=rows.filter(r=>!r.hidden).length;const label=document.querySelector('.table-footer span');if(label)label.innerHTML=`Hiển thị <b>${count}</b> trên <b>${customers.length}</b> khách hàng`;const empty=document.querySelector('.empty-state');if(empty)empty.style.display=count?'none':'block';}
-function action(type){switch(type){case'add':openModal();break;case'open-nav':document.getElementById('sidebar')?.classList.add('sidebar-open');break;case'close-nav':document.getElementById('sidebar')?.classList.remove('sidebar-open');break;case'help':notify('Chọn từng module ở thanh điều hướng để quản lý nghiệp vụ riêng.');break;case'settings':notify('Cấu hình hệ thống sẽ được bổ sung ở phase sau.');break;case'notifications':notify('Bạn đã xem các thông báo mới nhất.');break;case'page':notify('Đang hiển thị danh sách dữ liệu đã tải.');break;case'export':exportCsv();break;case'module-add':openModuleModal();break;}}
-function openModal(){const wrap=document.createElement('div');wrap.className='modal-backdrop';wrap.id='addModal';wrap.innerHTML=`<form class="modal" id="customerForm"><div class="modal-head"><div><h2>Thêm khách hàng mới</h2><p>Nhập thông tin cơ bản để tạo hồ sơ khách hàng.</p></div><button type="button" class="icon-btn" data-close>✕</button></div><label>Họ và tên<input name="name" required placeholder="Nhập họ tên khách hàng"></label><label>Tên công ty / cửa hàng<input name="company" placeholder="Nhập tên đơn vị"></label><div class="form-row"><label>Số điện thoại<input name="phone" required type="tel" placeholder="09xx xxx xxx"></label><label>Nhóm khách hàng<select name="type"><option>Đại lý</option><option>Xưởng sản xuất</option><option>Thợ nhôm kính</option><option>Cửa hàng</option><option>Khác</option></select></label></div><label>Email<input name="email" type="email" placeholder="email@example.com"></label><label>Địa chỉ<input name="address" placeholder="Địa chỉ khách hàng"></label><label>Link định vị Google Maps<input name="location_url" placeholder="Dán link chia sẻ Google Maps tại đây"></label><div data-map-input-preview class="location-preview-wrap"></div><label>Mô tả khách hàng<textarea name="customer_description" rows="3" placeholder="Quy mô, nhu cầu, đặc điểm, lịch sử làm việc..."></textarea></label><div class="form-row"><label>Tỉnh / thành<input name="province" placeholder="Đà Nẵng"></label></div><div class="modal-actions"><button type="button" class="btn btn-light" data-close>Hủy</button><button class="btn btn-primary" type="submit">＋ Tạo khách hàng</button></div></form>`;document.body.appendChild(wrap);wrap.addEventListener('click',e=>{if(e.target===wrap||e.target.closest('[data-close]'))wrap.remove();});bindLocationPreview(wrap.querySelector('form'));wrap.querySelector('form').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget),phone=String(f.get('phone')).trim();const locationUrl=String(f.get('location_url')||'').trim();if(locationUrl&&!isGoogleMapsLink(locationUrl)){notify('Vui lòng nhập link HTTPS từ Google Maps.');return;}const coords=extractGoogleMapsCoordinates(locationUrl);const payload={full_name:String(f.get('name')).trim(),company_name:String(f.get('company')).trim(),phone,email:String(f.get('email')).trim(),customer_type:String(f.get('type')),business_unit:'aluminum',status:'Tiềm năng',address:String(f.get('address')||'').trim(),province:String(f.get('province')||'').trim(),location_url:locationUrl,location_lat:coords?.lat??null,location_lng:coords?.lng??null,customer_description:String(f.get('customer_description')||'').trim()};try{if(liveMode){await window.HHHData.createCustomer(payload);await loadLiveCustomers();}else{customers.unshift(mapCustomer({full_name:payload.full_name,company_name:payload.company_name,phone,email:payload.email,customer_type:payload.customer_type,status:'Tiềm năng',address:payload.address,province:payload.province,location_url:payload.location_url,location_lat:payload.location_lat,location_lng:payload.location_lng,customer_description:payload.customer_description}));saveCustomers();render();}query='';filter='Tất cả';wrap.remove();notify(liveMode?'Đã lưu khách hàng vào Supabase.':'Đã thêm khách hàng vào dữ liệu demo.');}catch(err){notify('Không thể lưu khách hàng: '+(err.message||err));}});}
+function action(type){switch(type){case'add':openModal();break;case'logout':logoutUser();break;case'open-nav':document.getElementById('sidebar')?.classList.add('sidebar-open');break;case'close-nav':document.getElementById('sidebar')?.classList.remove('sidebar-open');break;case'help':notify('Chọn từng module ở thanh điều hướng để quản lý nghiệp vụ riêng.');break;case'settings':notify('Cấu hình hệ thống sẽ được bổ sung ở phase sau.');break;case'notifications':notify('Bạn đã xem các thông báo mới nhất.');break;case'page':notify('Đang hiển thị danh sách dữ liệu đã tải.');break;case'export':exportCsv();break;case'module-add':openModuleModal();break;}}
+async function populateAssignees(select,selected=''){if(!select||!window.HHHData?.ready())return;try{const users=await window.HHHData.listProfiles();select.innerHTML='<option value="">Chưa phân công</option>'+users.map(u=>`<option value="${esc(u.id)}" ${u.id===selected?'selected':''}>${esc(u.full_name||u.email||'Nhân viên')}</option>`).join('');if(!selected&&currentProfile?.id)select.value=currentProfile.id;}catch(e){select.innerHTML='<option value="">Không tải được danh sách nhân viên</option>';}}
+function openModal(){const wrap=document.createElement('div');wrap.className='modal-backdrop';wrap.id='addModal';wrap.innerHTML=`<form class="modal" id="customerForm"><div class="modal-head"><div><h2>Thêm khách hàng mới</h2><p>Nhập thông tin cơ bản để tạo hồ sơ khách hàng.</p></div><button type="button" class="icon-btn" data-close>✕</button></div><label>Họ và tên<input name="name" required placeholder="Nhập họ tên khách hàng"></label><label>Tên công ty / cửa hàng<input name="company" placeholder="Nhập tên đơn vị"></label><div class="form-row"><label>Số điện thoại<input name="phone" required type="tel" placeholder="09xx xxx xxx"></label><label>Nhóm khách hàng<select name="type"><option>Đại lý</option><option>Xưởng sản xuất</option><option>Thợ nhôm kính</option><option>Cửa hàng</option><option>Khác</option></select></label></div><label>Email<input name="email" type="email" placeholder="email@example.com"></label><label>Nhân viên phụ trách<select name="assigned_to" data-assignee><option value="">Đang tải nhân viên...</option></select></label><label>Địa chỉ<input name="address" placeholder="Địa chỉ khách hàng"></label><label>Link định vị Google Maps<input name="location_url" placeholder="Dán link chia sẻ Google Maps tại đây"></label><div data-map-input-preview class="location-preview-wrap"></div><label>Mô tả khách hàng<textarea name="customer_description" rows="3" placeholder="Quy mô, nhu cầu, đặc điểm, lịch sử làm việc..."></textarea></label><div class="form-row"><label>Khu vực<select name="region"><option value="">Chọn khu vực</option><option>Miền Bắc</option><option>Miền Trung</option><option>Miền Nam</option></select></label><label>Tỉnh / thành<input name="province" placeholder="Đà Nẵng"></label></div><label>Xã / phường<input name="ward" placeholder="Ví dụ: Phường Hải Châu"></label><div class="modal-actions"><button type="button" class="btn btn-light" data-close>Hủy</button><button class="btn btn-primary" type="submit">＋ Tạo khách hàng</button></div></form>`;document.body.appendChild(wrap);wrap.addEventListener('click',e=>{if(e.target===wrap||e.target.closest('[data-close]'))wrap.remove();});populateAssignees(wrap.querySelector('[data-assignee]'));bindLocationPreview(wrap.querySelector('form'));wrap.querySelector('form').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget),phone=String(f.get('phone')).trim();const locationUrl=String(f.get('location_url')||'').trim();if(locationUrl&&!isGoogleMapsLink(locationUrl)){notify('Vui lòng nhập link HTTPS từ Google Maps.');return;}const coords=extractGoogleMapsCoordinates(locationUrl);const payload={full_name:String(f.get('name')).trim(),company_name:String(f.get('company')).trim(),phone,email:String(f.get('email')).trim(),customer_type:String(f.get('type')),business_unit:'aluminum',status:'Tiềm năng',address:String(f.get('address')||'').trim(),province:String(f.get('province')||'').trim(),region:String(f.get('region')||'').trim(),ward:String(f.get('ward')||'').trim(),location_url:locationUrl,location_lat:coords?.lat??null,location_lng:coords?.lng??null,customer_description:String(f.get('customer_description')||'').trim(),assigned_to:String(f.get('assigned_to')||'')||null};try{if(liveMode){await window.HHHData.createCustomer(payload);await loadLiveCustomers();}else{customers.unshift(mapCustomer({full_name:payload.full_name,company_name:payload.company_name,phone,email:payload.email,customer_type:payload.customer_type,status:'Tiềm năng',address:payload.address,province:payload.province,region:payload.region,ward:payload.ward,location_url:payload.location_url,location_lat:payload.location_lat,location_lng:payload.location_lng,customer_description:payload.customer_description}));saveCustomers();render();}query='';filter='Tất cả';wrap.remove();notify(liveMode?'Đã lưu khách hàng vào Supabase.':'Đã thêm khách hàng vào dữ liệu demo.');}catch(err){notify('Không thể lưu khách hàng: '+(err.message||err));}});}
 async function showCustomer(c){
  active='Khách hàng';selectedCustomerId=String(c.id||c.phone);currentCustomer=c;customerActivities=[];customerContacts=[];customerDocuments=[];customerTags=[];customerCareGroups=[];customerActivitiesLoading=liveMode&&!!c.id;render();
  if(liveMode&&c.id){customerExtrasLoading=true;try{const results=await Promise.all([window.HHHData.listActivities(c.id),window.HHHData.listCustomerContacts(c.id),window.HHHData.listCustomerDocuments(c.id),window.HHHData.listCustomerTags(c.id),window.HHHData.listCustomerCareGroups(c.id)]);[customerActivities,customerContacts,customerDocuments,customerTags,customerCareGroups]=results;}catch(err){notify('Không tải được dữ liệu hồ sơ: '+err.message);}finally{customerActivitiesLoading=false;customerExtrasLoading=false;render();}}
@@ -298,17 +418,17 @@ function openEditCustomer(c,parent){
  wrap.innerHTML=`<form class="modal edit-customer-form"><div class="modal-head"><div><h2>Cập nhật hồ sơ khách hàng</h2><p>Bổ sung thông tin chi tiết và vị trí Google Maps</p></div><button type="button" class="icon-btn" data-close>✕</button></div>
  <label>Họ và tên<input name="full_name" required value="${esc(c.name)}"></label><label>Công ty / cửa hàng<input name="company_name" value="${esc(c.company)}"></label>
  <div class="form-row"><label>Điện thoại<input name="phone" value="${esc(c.phone)}"></label><label>Nhóm khách hàng<input name="customer_type" value="${esc(c.type)}"></label></div>
- <label>Địa chỉ<input name="address" value="${esc(c.address)}"></label><label>Tỉnh / thành<input name="province" value="${esc(c.province)}"></label>
+ <label>Địa chỉ<input name="address" value="${esc(c.address)}"></label><div class="form-row"><label>Khu vực<select name="region">${['','Miền Bắc','Miền Trung','Miền Nam'].map(x=>`<option value="${x}" ${c.region===x?'selected':''}>${x||'Chọn khu vực'}</option>`).join('')}</select></label><label>Tỉnh / thành<input name="province" value="${esc(c.province)}"></label></div><label>Xã / phường<input name="ward" value="${esc(c.ward)}" placeholder="Ví dụ: Phường Hải Châu"></label>
  <label>Link định vị Google Maps<input name="location_url" value="${esc(c.locationUrl)}" placeholder="Dán link Google Maps (ưu tiên link có tọa độ)"><small class="field-hint">Hỗ trợ link Google Maps có tọa độ dạng @lat,lng hoặc !3dlat!4dlng. Link rút gọn maps.app.goo.gl có thể cần mở rộng trước.</small></label><div data-map-input-preview class="location-preview-wrap"></div>
  <div class="form-row"><label>Email<input name="email" type="email" value="${esc(c.email)}"></label><label>Người liên hệ<input name="contact_person" value="${esc(c.contact)}"></label></div>
  <div class="form-row"><label>Mã số thuế<input name="tax_code" value="${esc(c.taxCode)}"></label><label>Trạng thái<select name="status">${['Tiềm năng','Đang hoạt động','Cần chăm sóc','Ngừng giao dịch'].map(x=>`<option ${c.status===x?'selected':''}>${x}</option>`).join('')}</select></label></div>
  <div class="form-row"><label>Quy mô khách hàng<select name="business_scale">${['Chưa phân loại','Cá nhân / hộ kinh doanh','Nhỏ','Vừa','Lớn','Doanh nghiệp / chuỗi'].map(x=>`<option ${c.businessScale===x?'selected':''}>${x}</option>`).join('')}</select></label><label>Mức tiềm năng<select name="potential_level">${['Chưa đánh giá','Thấp','Trung bình','Cao','Chiến lược'].map(x=>`<option ${c.potentialLevel===x?'selected':''}>${x}</option>`).join('')}</select></label></div><label>Điểm tiềm năng (0–100)<input name="potential_score" type="number" min="0" max="100" value="${c.potentialScore??''}" placeholder="Để trống nếu chưa đánh giá"></label>
  <label>Mô tả khách hàng<textarea name="customer_description" rows="4" placeholder="Quy mô kinh doanh, lĩnh vực hoạt động, nhu cầu, sản phẩm quan tâm, đặc điểm làm việc...">${esc(c.description)}</textarea></label>
- <label>Ghi chú nội bộ<textarea name="notes" rows="3">${esc(c.notes)}</textarea></label>
+ <label>Nhân viên phụ trách<select name="assigned_to" data-assignee><option value="${esc(c.assignedTo||'')}">Đang tải nhân viên...</option></select></label><label>Ghi chú nội bộ<textarea name="notes" rows="3">${esc(c.notes)}</textarea></label>
  <div class="modal-actions"><button type="button" class="btn btn-light" data-close>Hủy</button><button class="btn btn-primary">Lưu hồ sơ</button></div></form>`;
  document.body.appendChild(wrap);wrap.addEventListener('click',e=>{if(e.target===wrap||e.target.closest('[data-close]'))wrap.remove();});
- bindLocationPreview(wrap.querySelector('form'));wrap.querySelector('form').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget);const locationUrl=String(f.get('location_url')||'').trim();if(locationUrl&&!isGoogleMapsLink(locationUrl)){notify('Vui lòng nhập link HTTPS từ Google Maps.');return;}const coords=extractGoogleMapsCoordinates(locationUrl);const changes={full_name:String(f.get('full_name')||'').trim(),company_name:String(f.get('company_name')||'').trim(),phone:String(f.get('phone')||'').trim(),customer_type:String(f.get('customer_type')||'').trim(),address:String(f.get('address')||'').trim(),province:String(f.get('province')||'').trim(),email:String(f.get('email')||'').trim(),contact_person:String(f.get('contact_person')||'').trim(),tax_code:String(f.get('tax_code')||'').trim(),status:String(f.get('status')||'').trim(),business_scale:String(f.get('business_scale')||'Chưa phân loại'),potential_level:String(f.get('potential_level')||'Chưa đánh giá'),potential_score:f.get('potential_score')===''?null:Number(f.get('potential_score')),customer_description:String(f.get('customer_description')||'').trim(),notes:String(f.get('notes')||'').trim(),location_url:locationUrl,location_lat:coords?.lat??null,location_lng:coords?.lng??null};
-  try{if(liveMode){await window.HHHData.updateCustomer(c.id,changes);await loadLiveCustomers();}else{Object.assign(c,{name:changes.full_name,company:changes.company_name,phone:changes.phone,type:changes.customer_type,address:changes.address,province:changes.province,email:changes.email,contact:changes.contact_person,taxCode:changes.tax_code,status:changes.status,description:changes.customer_description,notes:changes.notes,locationUrl,locationLat:changes.location_lat,locationLng:changes.location_lng});saveCustomers();}wrap.remove();const updated=customers.find(x=>String(x.id||x.phone)===String(selectedCustomerId))||c;await showCustomer(updated);notify('Đã cập nhật hồ sơ khách hàng.');}catch(err){notify('Không thể cập nhật: '+err.message);}
+ populateAssignees(wrap.querySelector('[data-assignee]'),c.assignedTo);bindLocationPreview(wrap.querySelector('form'));wrap.querySelector('form').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget);const locationUrl=String(f.get('location_url')||'').trim();if(locationUrl&&!isGoogleMapsLink(locationUrl)){notify('Vui lòng nhập link HTTPS từ Google Maps.');return;}const coords=extractGoogleMapsCoordinates(locationUrl);const changes={full_name:String(f.get('full_name')||'').trim(),company_name:String(f.get('company_name')||'').trim(),phone:String(f.get('phone')||'').trim(),customer_type:String(f.get('customer_type')||'').trim(),address:String(f.get('address')||'').trim(),province:String(f.get('province')||'').trim(),region:String(f.get('region')||'').trim(),ward:String(f.get('ward')||'').trim(),email:String(f.get('email')||'').trim(),contact_person:String(f.get('contact_person')||'').trim(),tax_code:String(f.get('tax_code')||'').trim(),status:String(f.get('status')||'').trim(),business_scale:String(f.get('business_scale')||'Chưa phân loại'),potential_level:String(f.get('potential_level')||'Chưa đánh giá'),potential_score:f.get('potential_score')===''?null:Number(f.get('potential_score')),customer_description:String(f.get('customer_description')||'').trim(),notes:String(f.get('notes')||'').trim(),assigned_to:String(f.get('assigned_to')||'')||null,location_url:locationUrl,location_lat:coords?.lat??null,location_lng:coords?.lng??null};
+  try{if(liveMode){await window.HHHData.updateCustomer(c.id,changes);await loadLiveCustomers();}else{Object.assign(c,{name:changes.full_name,company:changes.company_name,phone:changes.phone,type:changes.customer_type,address:changes.address,province:changes.province,region:changes.region,ward:changes.ward,email:changes.email,contact:changes.contact_person,taxCode:changes.tax_code,status:changes.status,description:changes.customer_description,notes:changes.notes,locationUrl,locationLat:changes.location_lat,locationLng:changes.location_lng});saveCustomers();}wrap.remove();const updated=customers.find(x=>String(x.id||x.phone)===String(selectedCustomerId))||c;await showCustomer(updated);notify('Đã cập nhật hồ sơ khách hàng.');}catch(err){notify('Không thể cập nhật: '+err.message);}
  });
 }
 
@@ -350,4 +470,4 @@ async function openModuleModal(){
 function exportCsv(){const headers=['Mã khách hàng','ID nguồn','Họ và tên','Công ty','Nhóm khách hàng','Điện thoại','Email','Địa chỉ','Trạng thái'];const rows=customers.map(c=>[c.code,c.legacyId,c.name,c.company,c.type,c.phone,c.email,c.address,c.status]);const csv='\uFEFF'+[headers,...rows].map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));const a=document.createElement('a');a.href=url;a.download='HHH-CRM-khach-hang.csv';a.click();URL.revokeObjectURL(url);notify('Đã xuất danh sách khách hàng dạng CSV.');}
 function notify(message){document.querySelector('.toast')?.remove();const t=document.createElement('div');t.className='toast';t.innerHTML=`<span>✓</span>${esc(message)}`;document.body.appendChild(t);clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.remove(),2800);}
 render();
-if(window.HHHData?.ready()) loadLiveCustomers();
+if(window.HHHData?.ready()){loadCurrentProfile();loadLiveCustomers();}

@@ -126,7 +126,7 @@ window.HHHData = {
   },
   async updateLead(id, changes) {
     if (!this.ready()) throw new Error('Chưa cấu hình Supabase.');
-    const allowed=['full_name','company_name','phone','email','source','customer_type','stage','assigned_to','province','ward','notes','next_follow_up_at','estimated_value','lost_reason','last_contacted_at','converted_customer_id'];
+    const allowed=['full_name','company_name','phone','email','source','customer_type','stage','assigned_to','province','ward','notes','next_follow_up_at','estimated_value','lead_score','lead_score_updated_at','lost_reason','last_contacted_at','converted_customer_id'];
     const payload=Object.fromEntries(Object.entries(changes).filter(([k])=>allowed.includes(k)));
     const {data,error}=await window.HHH_DB.client.from('leads').update(payload).eq('id',id).select().single();
     if(error) throw error; return data;

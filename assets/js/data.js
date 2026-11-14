@@ -156,6 +156,17 @@ window.HHHData = {
     const {data,error}=await window.HHH_DB.client.from("customer_tag_assignments").select("tag:customer_tags(id,name,color)").eq("customer_id",customerId);
     if(error) throw error; return (data||[]).map(x=>x.tag).filter(Boolean);
   },
+  async listTags() {
+    const {data,error}=await window.HHH_DB.client.from("customer_tags").select("id,name").order("name");
+    if(error) throw error; return data||[];
+  },
+  async listTagAssignments() {
+    const out=[];
+    for(let i=0;;i+=1000){ // API returns max 1000 rows per request
+      const {data,error}=await window.HHH_DB.client.from("customer_tag_assignments").select("customer_id,tag:customer_tags(id,name)").order("customer_id").order("tag_id").range(i,i+999);
+      if(error) throw error; out.push(...data); if(data.length<1000) return out.filter(r=>r.tag);
+    }
+  },
   async addCustomerTag(customerId,name) {
     const c=window.HHH_DB.client;
     let {data:tag,error}=await c.from("customer_tags").select("id,name").ilike("name",name).maybeSingle();

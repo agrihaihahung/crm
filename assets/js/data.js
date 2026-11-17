@@ -5,6 +5,7 @@ window.HHHData = {
     if (!this.ready()) throw new Error("Chưa cấu hình Supabase. Hãy cập nhật assets/js/supabase-config.js.");
     let q = window.HHH_DB.client.from("customers")
       .select("*")
+      .is("deleted_at", null)
       .order("created_at", {ascending:false}).limit(limit);
     if (search) q = q.or(`full_name.ilike.%${search}%,company_name.ilike.%${search}%,phone.ilike.%${search}%`);
     if (status !== "Tất cả") q = q.eq("status", status);
@@ -50,9 +51,9 @@ window.HHHData = {
     if (error) throw error;
     return data;
   },
-  async deleteCustomer(id) {
+  async deleteCustomer(id, reason, note = "") {
     if (!this.ready()) throw new Error("Chưa cấu hình Supabase.");
-    const {error} = await window.HHH_DB.client.from("customers").delete().eq("id",id);
+    const {error} = await window.HHH_DB.client.rpc("hhh_soft_delete_customer", {p_id:id, p_reason:reason, p_note:note || null});
     if (error) throw error;
   },
   async listActivities(customerId) {

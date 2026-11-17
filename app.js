@@ -136,16 +136,18 @@ function customerTable(list,wide=false){
 }
 function filterCustomers(){
  const q=query.toLowerCase();
- return customers.filter(c=>`${c.name} ${c.company} ${c.phone} ${c.code} ${(c.tags||[]).map(t=>t.name).join(' ')}`.toLowerCase().includes(q)&&(filter==='Tất cả'||c.status===filter)&&(!cf.province||provOf(c)===cf.province)&&(!cf.tag||(c.tags||[]).some(t=>t.id===cf.tag))&&(!cf.level||c.potentialLevel===cf.level)&&(!cf.type||c.type===cf.type));
+ return customers.filter(c=>`${c.name} ${c.company} ${c.phone} ${c.code} ${(c.tags||[]).map(t=>t.name).join(' ')}`.toLowerCase().includes(q)&&(filter==='Tất cả'||c.status===filter)&&(!cf.province||provOf(c)===cf.province)&&(!cf.ward||String(c.ward||'').trim()===cf.ward)&&(!cf.tag||(c.tags||[]).some(t=>t.id===cf.tag))&&(!cf.level||c.potentialLevel===cf.level)&&(!cf.type||c.type===cf.type));
 }
 function customerFilterBar(){
  const pc={},tc={},typ={};
- customers.forEach(c=>{const p=provOf(c);if(p)pc[p]=(pc[p]||0)+1;typ[c.type]=1;(c.tags||[]).forEach(t=>{tc[t.id]=(tc[t.id]||0)+1;});});
+ const wc={};
+ customers.forEach(c=>{const p=provOf(c);if(p)pc[p]=(pc[p]||0)+1;const w=String(c.ward||'').trim();if(w&&(!cf.province||p===cf.province))wc[w]=(wc[w]||0)+1;typ[c.type]=1;(c.tags||[]).forEach(t=>{tc[t.id]=(tc[t.id]||0)+1;});});
  const sel=(key,label,opts)=>`<select data-cf="${key}" aria-label="${label}"><option value="">${label}</option>${opts.map(([v,t])=>`<option value="${esc(v)}" ${cf[key]===v?'selected':''}>${esc(t)}</option>`).join('')}</select>`;
  const provs=[...VN_PROVINCES,...Object.keys(pc).filter(p=>!VN_PROVINCES.includes(p))].map(p=>[p,`${p} (${pc[p]||0})`]);
+ const wards=Object.keys(wc).sort((x,y)=>x.localeCompare(y,'vi')).map(w=>[w,`${w} (${wc[w]})`]);
  const chips=allTags.filter(t=>tc[t.id]||cf.tag===t.id).sort((a,b)=>(tc[b.id]||0)-(tc[a.id]||0)).slice(0,15).map(t=>`<button class="tag-chip ${cf.tag===t.id?'active':''}" data-tag-filter="${esc(t.id)}">${esc(t.name)} <b>${tc[t.id]||0}</b></button>`).join('');
  const dirty=Object.values(cf).some(Boolean)||filter!=='Tất cả'||query;
- return `<div class="table-tools filter-bar"><label class="table-search">⌕ <input id="customerSearch" placeholder="Tìm tên, công ty, mã, điện thoại, nhãn..." value="${esc(query)}"></label><div class="filter-wrap">${sel('province','Tỉnh / thành phố',provs)}${sel('tag','Nhãn',allTags.map(t=>[t.id,`${t.name} (${tc[t.id]||0})`]))}${sel('level','Mức tiềm năng',['Chiến lược','Cao','Trung bình','Thấp','Chưa đánh giá'].map(x=>[x,x]))}${sel('type','Nhóm khách',Object.keys(typ).map(x=>[x,x]))}<select id="statusFilter" aria-label="Trạng thái"><option value="Tất cả">Mọi trạng thái</option>${['Đang hoạt động','Cần chăm sóc','Tiềm năng','Ngừng giao dịch'].map(x=>`<option ${filter===x?'selected':''}>${x}</option>`).join('')}</select>${dirty?'<button class="btn btn-light btn-small" data-cf-clear>✕ Xóa lọc</button>':''}</div></div>${chips?`<div class="tag-chips"><span>Nhãn nhanh:</span>${chips}</div>`:''}`;
+ return `<div class="table-tools filter-bar"><label class="table-search">⌕ <input id="customerSearch" placeholder="Tìm tên, công ty, mã, điện thoại, nhãn..." value="${esc(query)}"></label><div class="filter-wrap">${sel('province','Tỉnh / thành phố',provs)}${sel('ward','Phường / xã',wards)}${sel('tag','Nhãn',allTags.map(t=>[t.id,`${t.name} (${tc[t.id]||0})`]))}${sel('level','Mức tiềm năng',['Chiến lược','Cao','Trung bình','Thấp','Chưa đánh giá'].map(x=>[x,x]))}${sel('type','Nhóm khách',Object.keys(typ).map(x=>[x,x]))}<select id="statusFilter" aria-label="Trạng thái"><option value="Tất cả">Mọi trạng thái</option>${['Đang hoạt động','Cần chăm sóc','Tiềm năng','Ngừng giao dịch'].map(x=>`<option ${filter===x?'selected':''}>${x}</option>`).join('')}</select>${dirty?'<button class="btn btn-light btn-small" data-cf-clear>✕ Xóa lọc</button>':''}</div></div>${chips?`<div class="tag-chips"><span>Nhãn nhanh:</span>${chips}</div>`:''}`;
 }
 function renderCustomersPage(){
  const list=filterCustomers();
@@ -514,7 +516,7 @@ function bindEvents(){
  document.getElementById('globalSearch')?.addEventListener('keydown',e=>{if(e.key==='Enter'){query=e.target.value;active='Khách hàng';render();}});
  document.getElementById('customerSearch')?.addEventListener('input',e=>{query=e.target.value;const pos=e.target.selectionStart;render();const input=document.getElementById('customerSearch');if(input){input.focus();input.setSelectionRange(pos,pos);}});
  document.getElementById('statusFilter')?.addEventListener('change',e=>{filter=e.target.value;render();});
- document.querySelectorAll('[data-cf]').forEach(el=>el.addEventListener('change',()=>{cf[el.dataset.cf]=el.value;render();}));
+ document.querySelectorAll('[data-cf]').forEach(el=>el.addEventListener('change',()=>{cf[el.dataset.cf]=el.value;if(el.dataset.cf==='province')cf.ward='';render();}));
  document.querySelectorAll('[data-tag-filter]').forEach(el=>el.addEventListener('click',()=>{cf.tag=cf.tag===el.dataset.tagFilter?'':el.dataset.tagFilter;render();}));
  document.querySelector('[data-cf-clear]')?.addEventListener('click',()=>{cf={};filter='Tất cả';query='';render();});
  document.querySelectorAll('[data-reload]').forEach(el=>el.addEventListener('click',()=>loadModule(el.dataset.reload)));

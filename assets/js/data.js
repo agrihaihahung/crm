@@ -228,6 +228,12 @@ window.HHHData = {
     if(error) throw error;
     return data;
   },
+  async listInteractions({from,to}={}) {
+    if (!this.ready()) throw new Error("Chưa cấu hình Supabase.");
+    let q=window.HHH_DB.client.from("activities").select("id,customer_id,created_by,occurred_at,activity_type,subject,description,outcome").order("occurred_at",{ascending:false}).limit(2000);
+    if(from) q=q.gte("occurred_at",from); if(to) q=q.lt("occurred_at",to);
+    const {data,error}=await q; if(error)throw error; return data||[];
+  },
   async listProfiles() {
     const {data,error}=await window.HHH_DB.client.from("profiles").select("id,full_name,email,role,is_active").eq("is_active",true).order("full_name");
     if(error)throw error;return data||[];

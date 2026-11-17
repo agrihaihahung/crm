@@ -13,7 +13,7 @@ const tasks = [
   {name:'Chăm sóc sau bán hàng',customer:'Cửa nhôm Quốc Bảo',time:'14:00',tag:'CSKH',tone:'green',icon:'◉'}
 ];
 const navGroups = [
-  {title:'TỔNG QUAN',items:[['Dashboard','▦'],['Khách hàng','♙'],['Khách tiềm năng','◎'],['Phân tích khách hàng','⌖']]},
+  {title:'TỔNG QUAN',items:[['Dashboard','▦'],['Khách hàng','♙'],['Khách tiềm năng','◎'],['Tương tác','☏'],['Phân tích khách hàng','⌖']]},
   {title:'KINH DOANH',items:[['Cơ hội bán hàng','↗'],['Đơn hàng','▤']]},
   {title:'CHĂM SÓC KHÁCH HÀNG',items:[['Trung tâm CSKH','♡'],['Lịch chăm sóc','▣'],['Công việc','✓']]},
   {title:'THỊ TRƯỜNG',items:[['Quản lý thị trường','⌖']]},
@@ -60,6 +60,7 @@ async function loadTagMap(){
 const pageMeta = {
  'Dashboard':['Tổng quan hoạt động','Theo dõi tình hình khách hàng và hoạt động CRM từ dữ liệu Supabase.'],
  'Khách hàng':['Danh sách khách hàng','Quản lý khách hàng trong lĩnh vực nhôm kính.'],
+ 'Tương tác':['Tương tác khách hàng','Ghi nhận nhanh và theo dõi mọi tương tác của nhân viên với khách hàng.'],
  'Phân tích khách hàng':['Phân tích & chăm sóc khách hàng','Bản đồ khu vực, khách tiềm năng cao, khách quá hạn chăm sóc và hiệu quả nhân viên.'],
  'Khách tiềm năng':['Quản lý khách tiềm năng','Theo dõi Lead riêng biệt theo từng giai đoạn chuyển đổi.'],
  'Cơ hội bán hàng':['Pipeline cơ hội bán hàng','Theo dõi giá trị dự kiến, giai đoạn và ngày chốt cơ hội.'],
@@ -91,7 +92,7 @@ function render(){
  <nav class="nav-list">${nav}</nav>
  <div class="sidebar-bottom"><div class="sidebar-account-box"><button class="nav-item sidebar-settings" data-action="settings">⚙ <span>Cài đặt hệ thống</span></button><div class="profile"><div class="avatar avatar-dark">${esc(initials(currentProfile?.full_name||'HH'))}</div><div class="profile-info"><b>${esc(currentProfile?.full_name||currentProfile?.email||'Tài khoản')}</b><small>${esc(currentProfile?.role||'')}</small></div><button class="btn btn-light btn-logout" data-action="logout" title="Đăng xuất">↪ Đăng xuất</button></div></div></div></aside>
  <main class="main-area"><header class="topbar"><div class="top-left"><button class="icon-btn menu-btn" data-action="open-nav">☰</button><div class="breadcrumb">Không gian làm việc <span>›</span> <b>${esc(active)}</b></div></div><div class="top-actions"><label class="global-search"><span>⌕</span><input id="globalSearch" placeholder="Tìm kiếm nhanh..." value="${esc(query)}"></label><button class="icon-btn notification" data-action="notifications">♧</button><div class="top-avatar">${esc(initials(currentProfile?.full_name||'HH'))}</div><button class="btn btn-light btn-logout-top" data-action="logout">↪ Đăng xuất</button></div></header>
- <div class="page-content"><div class="welcome-row"><div><div class="eyebrow"><span class="live-dot"></span> ${esc(todayLabel.toLocaleUpperCase('vi-VN'))} · ${liveMode?'SUPABASE LIVE':'CHƯA KẾT NỐI DỮ LIỆU'}</div><h1>${active==='Dashboard'?'Tổng quan CRM':esc(active)}</h1><p>${esc(meta[1])}</p></div><div class="welcome-actions">${active==='Khách hàng'?(selectedCustomerId?'':'<button class="btn btn-light" data-action="export">⇩ Xuất CSV</button><button class="btn btn-primary" data-action="add">＋ Thêm khách hàng</button>'):(active==='Dashboard'||active==='Quản lý thị trường'||(active==='Khách tiềm năng'&&currentProfile?.role==='viewer'))?'':'<button class="btn btn-primary" data-action="module-add">＋ '+(active==='Khách tiềm năng'?'Thêm khách tiềm năng':active==='Cơ hội bán hàng'?'Thêm cơ hội':active==='Đơn hàng'?'Tạo đơn hàng':active==='Trung tâm CSKH'?'Tạo yêu cầu':'Tạo công việc')+'</button>'}</div></div>
+ <div class="page-content"><div class="welcome-row"><div><div class="eyebrow"><span class="live-dot"></span> ${esc(todayLabel.toLocaleUpperCase('vi-VN'))} · ${liveMode?'SUPABASE LIVE':'CHƯA KẾT NỐI DỮ LIỆU'}</div><h1>${active==='Dashboard'?'Tổng quan CRM':esc(active)}</h1><p>${esc(meta[1])}</p></div><div class="welcome-actions">${active==='Khách hàng'?(selectedCustomerId?'':'<button class="btn btn-light" data-action="export">⇩ Xuất CSV</button><button class="btn btn-primary" data-action="add">＋ Thêm khách hàng</button>'):(active==='Dashboard'||active==='Tương tác'||active==='Quản lý thị trường'||(active==='Khách tiềm năng'&&currentProfile?.role==='viewer'))?'':'<button class="btn btn-primary" data-action="module-add">＋ '+(active==='Khách tiềm năng'?'Thêm khách tiềm năng':active==='Cơ hội bán hàng'?'Thêm cơ hội':active==='Đơn hàng'?'Tạo đơn hàng':active==='Trung tâm CSKH'?'Tạo yêu cầu':'Tạo công việc')+'</button>'}</div></div>
  <section id="module-content">${renderPageContent()}</section>
  <footer class="footer"><span>© 2026 HHH CRM · Hải Hà Hưng</span><span>HHH CRM · Vanilla JS + Supabase</span></footer></div></main>${mobileScrim()}</div>`;
  bindEvents();
@@ -99,6 +100,7 @@ function render(){
 }
 function renderPageContent(){
  if(active==='Dashboard') return renderDashboard();
+ if(active==='Tương tác') return renderInteractionsPage();
  if(active==='Phân tích khách hàng') return renderCustomerIntelligence();
  if(active==='Nhân viên & phân quyền') return currentProfile?.role==='admin'?renderStaffPage():'<div class="panel">Bạn không có quyền truy cập trang này.</div>';
  if(active==='Phân công & KPI') return renderKpiPage();
@@ -477,6 +479,7 @@ async function loadCurrentProfile(){
 }
 
 function bindEvents(){
+ bindInteractions();
  document.querySelectorAll('[data-nav]').forEach(el=>el.addEventListener('click',async()=>{active=el.dataset.nav;selectedCustomerId=null;customerActivities=[];query='';filter='Tất cả';cf={};document.getElementById('sidebar')?.classList.remove('sidebar-open');render();if(active==='Nhân viên & phân quyền')await loadStaff();else await loadModuleForActive();}));
  document.querySelectorAll('[data-staff-role]').forEach(el=>el.addEventListener('change',()=>saveStaffAccess(el.dataset.staffId,el.value,null)));
  document.querySelectorAll('[data-staff-active]').forEach(el=>el.addEventListener('change',()=>saveStaffAccess(el.dataset.staffId,null,el.checked)));
@@ -534,7 +537,7 @@ function bindEvents(){
 async function loadModuleForActive(){
  if(active==='Phân công & KPI'){await loadKpi();return;}
  const map={'Khách tiềm năng':'leads','Cơ hội bán hàng':'opportunities','Đơn hàng':'orders','Trung tâm CSKH':'complaints','Lịch chăm sóc':'care_tasks','Công việc':'care_tasks'};
- const key=map[active];if(key)await loadModule(key); else if(active==='Phân tích khách hàng') await loadCustomerIntelligence(); else if(active==='Quản lý thị trường') await loadMarketData();
+ const key=map[active];if(key)await loadModule(key); else if(active==='Tương tác') await loadInteractions(); else if(active==='Phân tích khách hàng') await loadCustomerIntelligence(); else if(active==='Quản lý thị trường') await loadMarketData();
 }
 async function loadModule(key){
  moduleLoading[key]=true;moduleError[key]='';render();
@@ -584,6 +587,43 @@ async function uploadCustomerDocuments(files){const c=activeCustomer();if(!c||!f
 async function downloadCustomerDocument(id){try{const url=await window.HHHData.getCustomerDocumentUrl(id);window.open(url,'_blank','noopener');}catch(e){notify(e.message);}}
 async function deleteCustomerDocument(id){if(!confirm('Xóa tài liệu này khỏi hồ sơ?'))return;try{await window.HHHData.deleteCustomerDocument(id);await showCustomer(activeCustomer());}catch(e){notify(e.message);}}
 
+/* ===== Tab Tương tác: xem và ghi nhanh tương tác của mọi khách hàng ===== */
+const ymd=d=>{const z=new Date(d.getTime()-d.getTimezoneOffset()*60000);return z.toISOString().slice(0,10);};
+const ixDaysAgo=n=>{const d=new Date();d.setDate(d.getDate()-n);return ymd(d);};
+let ix={rows:[],profiles:[],loading:false,error:'',from:ixDaysAgo(6),to:ymd(new Date()),staff:'',province:'',ward:'',type:'',q:''};
+const ixCustLabel=c=>[c.name,c.company,c.phone].filter(Boolean).join(' · ');
+async function loadInteractions(){
+ ix.loading=true;ix.error='';render();
+ try{
+  if(!window.HHHData?.ready())throw new Error('Chưa kết nối Supabase.');
+  const end=new Date(ix.to+'T00:00:00');end.setDate(end.getDate()+1);
+  const [rows,profiles]=await Promise.all([window.HHHData.listInteractions({from:new Date(ix.from+'T00:00:00').toISOString(),to:end.toISOString()}),window.HHHData.listProfiles()]);
+  ix.rows=rows;ix.profiles=profiles;
+ }catch(e){ix.error=e.message||String(e);}
+ ix.loading=false;render();
+}
+function renderInteractionsPage(){
+ const cmap=new Map(customers.map(c=>[c.id,c])),pmap=new Map(ix.profiles.map(u=>[u.id,u]));
+ const q=ix.q.trim().toLowerCase();
+ const rows=ix.rows.filter(r=>{const c=cmap.get(r.customer_id);return (!ix.staff||r.created_by===ix.staff)&&(!ix.type||r.activity_type===ix.type)&&(!ix.province||c?.province===ix.province)&&(!ix.ward||c?.ward===ix.ward)&&(!q||[r.subject,r.outcome,r.description,c?.name,c?.company,c?.phone].join(' ').toLowerCase().includes(q));});
+ const provinces=[...new Set(customers.map(c=>c.province).filter(Boolean))].sort(),wards=[...new Set(customers.filter(c=>!ix.province||c.province===ix.province).map(c=>c.ward).filter(Boolean))].sort();
+ const types=['call','meeting','message','email','visit','other'];
+ const opt=(v,l,sel)=>`<option value="${esc(v)}" ${sel===v?'selected':''}>${esc(l)}</option>`;
+ const canAdd=currentProfile?.role!=='viewer';
+ const now=new Date(),nowLocal=new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,16);
+ const counts=types.map(t=>`<span class="status info">${esc(activityTypeLabel(t))}: ${rows.filter(r=>r.activity_type===t).length}</span>`).join(' ');
+ const quick=canAdd?`<section class="panel"><div class="panel-head"><div><h2>Ghi nhận nhanh</h2><p>Chọn khách hàng, nhập nội dung rồi lưu, không cần mở hồ sơ.</p></div></div><form id="ixQuick" class="ix-grid"><label>Khách hàng<input name="customer" list="ixCustomers" required placeholder="Gõ tên, công ty hoặc số điện thoại..." autocomplete="off"></label><label>Hình thức<select name="activity_type">${types.map(t=>opt(t,activityTypeLabel(t),'call')).join('')}</select></label><label>Thời gian<input type="datetime-local" name="occurred_at" value="${nowLocal}" required></label><label class="ix-wide">Nội dung<input name="subject" required placeholder="Ví dụ: Gọi báo giá cửa nhôm"></label><label class="ix-wide">Kết quả / bước tiếp theo<input name="outcome" placeholder="Khách hẹn xem mẫu thứ 6..."></label><div class="ix-submit"><button class="btn btn-primary">Lưu tương tác</button></div><datalist id="ixCustomers">${customers.map(c=>`<option value="${esc(ixCustLabel(c))}"></option>`).join('')}</datalist></form></section>`:'';
+ const filters=`<section class="panel"><div class="ix-grid ix-filters"><label>Từ ngày<input type="date" data-ix="from" value="${ix.from}"></label><label>Đến ngày<input type="date" data-ix="to" value="${ix.to}"></label><label>Nhân viên<select data-ix="staff"><option value="">Tất cả</option>${ix.profiles.map(u=>opt(u.id,u.full_name||u.email,ix.staff)).join('')}</select></label><label>Tỉnh / TP<select data-ix="province"><option value="">Tất cả</option>${provinces.map(v=>opt(v,v,ix.province)).join('')}</select></label><label>Phường / Xã<select data-ix="ward"><option value="">Tất cả</option>${wards.map(v=>opt(v,v,ix.ward)).join('')}</select></label><label>Hình thức<select data-ix="type"><option value="">Tất cả</option>${types.map(t=>opt(t,activityTypeLabel(t),ix.type)).join('')}</select></label><label class="ix-wide">Tìm kiếm<input data-ix="q" value="${esc(ix.q)}" placeholder="Tên khách, nội dung, kết quả... (Enter)"></label><div class="ix-submit"><button type="button" class="btn btn-light" data-ix-range="0">Hôm nay</button> <button type="button" class="btn btn-light" data-ix-range="6">7 ngày</button> <button type="button" class="btn btn-light" data-ix-range="29">30 ngày</button></div></div></section>`;
+ const body=ix.loading?'<div class="empty-state">Đang tải tương tác...</div>':ix.error?`<div class="empty-state">Không tải được: ${esc(ix.error)}</div>`:rows.length?`<div class="table-scroll"><table><thead><tr><th>Thời gian</th><th>Khách hàng</th><th>Khu vực</th><th>Nhân viên</th><th>Hình thức</th><th>Nội dung</th><th>Kết quả</th></tr></thead><tbody>${rows.slice(0,500).map(r=>{const c=cmap.get(r.customer_id),u=pmap.get(r.created_by);return `<tr><td>${new Date(r.occurred_at).toLocaleString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</td><td>${c?`<button class="text-link" data-ix-open="${esc(c.id)}">${esc(c.name)}</button><small>${esc(c.company||c.phone||'')}</small>`:'—'}</td><td>${esc([c?.ward,c?.province].filter(Boolean).join(', ')||'—')}</td><td>${esc(u?.full_name||u?.email||'—')}</td><td>${esc(activityTypeLabel(r.activity_type))}</td><td>${esc(r.subject)}</td><td>${esc(r.outcome||'—')}</td></tr>`;}).join('')}</tbody></table></div>${rows.length>500?'<p class="field-hint">Chỉ hiển thị 500 tương tác mới nhất, hãy thu hẹp bộ lọc để xem thêm.</p>':''}`:'<div class="empty-state">Không có tương tác nào trong bộ lọc này.</div>';
+ return `${quick}${filters}<section class="panel"><div class="panel-head"><div><h2>${rows.length} tương tác</h2><p>${counts}</p></div></div>${body}</section>`;
+}
+function bindInteractions(){
+ document.querySelectorAll('[data-ix]').forEach(el=>el.addEventListener('change',()=>{const k=el.dataset.ix;ix[k]=el.value;if(k==='province')ix.ward='';if(k==='from'||k==='to')loadInteractions();else render();}));
+ document.querySelectorAll('[data-ix-range]').forEach(el=>el.addEventListener('click',()=>{ix.from=ixDaysAgo(Number(el.dataset.ixRange));ix.to=ymd(new Date());loadInteractions();}));
+ document.querySelectorAll('[data-ix-open]').forEach(el=>el.addEventListener('click',()=>{const c=customers.find(x=>x.id===el.dataset.ixOpen);if(c)showCustomer(c);}));
+ document.getElementById('ixQuick')?.addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget);const c=customers.find(x=>ixCustLabel(x)===f.get('customer'));if(!c){notify('Hãy chọn khách hàng từ danh sách gợi ý.');return;}
+  try{await window.HHHData.addActivity({customer_id:c.id,activity_type:f.get('activity_type'),subject:String(f.get('subject')).trim(),outcome:String(f.get('outcome')||'').trim()||null,occurred_at:new Date(f.get('occurred_at')).toISOString()});notify('Đã lưu tương tác cho '+c.name+'.');await loadInteractions();}catch(err){notify('Không thể lưu tương tác: '+err.message);}});
+}
 function openDeleteCustomer(c){const reasons=['Trùng lặp','Ngừng hợp tác','Sai thông tin / dữ liệu rác','Không có nhu cầu','Khách hàng yêu cầu xóa','Khác'];const wrap=document.createElement('div');wrap.className='modal-backdrop';wrap.style.zIndex='120';wrap.innerHTML=`<form class="modal"><div class="modal-head"><div><h2>Xóa khách hàng</h2><p>${esc(c.name)}${c.company?' · '+esc(c.company):''}</p></div><button type="button" class="icon-btn" data-close>✕</button></div><label>Lý do xóa<select name="reason" required><option value="">— Chọn lý do —</option>${reasons.map(r=>`<option>${esc(r)}</option>`).join('')}</select></label><label>Ghi chú thêm <span id="delNoteReq" hidden>(bắt buộc khi chọn Khác)</span><textarea name="note" rows="3" placeholder="Ví dụ: trùng với hồ sơ có số điện thoại 09xx..."></textarea></label><p class="field-hint">Hồ sơ sẽ bị ẩn khỏi danh sách. Dữ liệu được lưu kèm lý do để Admin truy vết.</p><div class="modal-actions"><button type="button" class="btn btn-light" data-close>Hủy</button><button class="btn btn-primary btn-danger-solid">Xác nhận xóa</button></div></form>`;document.body.appendChild(wrap);const form=wrap.querySelector('form');form.reason.addEventListener('change',()=>{const o=form.reason.value==='Khác';wrap.querySelector('#delNoteReq').hidden=!o;form.note.required=o;});wrap.addEventListener('click',e=>{if(e.target===wrap||e.target.closest('[data-close]'))wrap.remove();});form.addEventListener('submit',async e=>{e.preventDefault();const reason=form.reason.value,note=form.note.value.trim();try{await window.HHHData.deleteCustomer(c.id,reason,note);wrap.remove();customers=customers.filter(x=>x.id!==c.id);selectedCustomerId=null;customerActivities=[];render();notify('Đã xóa khách hàng. Lý do: '+reason);}catch(err){notify('Không thể xóa khách hàng: '+err.message);}});}
 function openActivityModal(customer,parent){const wrap=document.createElement('div');wrap.className='modal-backdrop';wrap.style.zIndex='120';wrap.innerHTML=`<form class="modal" id="activityForm"><div class="modal-head"><div><h2>Ghi nhận tương tác</h2><p>${esc(customer.name)}</p></div><button type="button" class="icon-btn" data-close>✕</button></div><label>Hình thức<select name="activity_type"><option value="call">Gọi điện</option><option value="meeting">Gặp trực tiếp</option><option value="message">Tin nhắn</option><option value="email">Email</option><option value="visit">Thăm khách hàng</option><option value="other">Khác</option></select></label><label>Nội dung<input name="subject" required placeholder="Ví dụ: Gọi tư vấn sản phẩm"></label><label>Chi tiết<textarea name="description" rows="3" placeholder="Nội dung trao đổi..."></textarea></label><label>Kết quả<input name="outcome" placeholder="Kết quả / bước tiếp theo"></label><div class="modal-actions"><button type="button" class="btn btn-light" data-close>Hủy</button><button class="btn btn-primary">Lưu tương tác</button></div></form>`;document.body.appendChild(wrap);wrap.addEventListener('click',e=>{if(e.target===wrap||e.target.closest('[data-close]'))wrap.remove();});wrap.querySelector('form').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget);try{await window.HHHData.addActivity({customer_id:customer.id,activity_type:f.get('activity_type'),subject:String(f.get('subject')).trim(),description:String(f.get('description')||'').trim()||null,outcome:String(f.get('outcome')||'').trim()||null});wrap.remove();showCustomer(customer);notify('Đã lưu lịch sử tương tác.');}catch(err){notify('Không thể lưu tương tác: '+err.message);}});}
 
